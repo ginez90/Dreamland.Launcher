@@ -9,8 +9,14 @@ public static class Theme
     public static readonly Color Muted = Color.FromArgb(150, 145, 165);
     public static readonly Color Border = Color.FromArgb(70, 66, 84);
 
+    /// <summary>Chamar no construtor, antes de adicionar os controles.</summary>
     public static void ApplyForm(Form form, LauncherConfig config, Size size)
     {
+        // O layout é em pixels de 96 DPI. Sem isto, com zoom de tela (125%, 150%) as fontes crescem
+        // mas as posições não, e os textos se sobrepõem.
+        form.AutoScaleDimensions = new SizeF(96f, 96f);
+        form.AutoScaleMode = AutoScaleMode.Dpi;
+
         form.Text = $"{config.ShardName} Launcher";
         form.ClientSize = size;
         form.FormBorderStyle = FormBorderStyle.FixedSingle;

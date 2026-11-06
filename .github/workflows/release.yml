@@ -40,8 +40,14 @@ jobs:
       - name: Publish manifest generator
         shell: pwsh
         run: |
-          dotnet publish src/Dreamland.ManifestGen/Dreamland.ManifestGen.csproj -c Release -o out/tools -p:Version=${{ steps.version.outputs.version }}
-          Compress-Archive -Path out/tools/* -DestinationPath out/DreamlandManifest-${{ steps.version.outputs.version }}.zip
+          $v = '${{ steps.version.outputs.version }}'
+          # Versões autossuficientes: rodam no PC (Windows) ou direto no VPS (Linux) sem instalar .NET.
+          foreach ($rid in 'win-x64', 'linux-x64') {
+            dotnet publish src/Dreamland.ManifestGen/Dreamland.ManifestGen.csproj -c Release -r $rid --self-contained -p:PublishSingleFile=true -p:Version=$v -o "out/tools-$rid"
+            if ($LASTEXITCODE -ne 0) { throw "Falha ao publicar o gerador para $rid" }
+          }
+          Compress-Archive -Path out/tools-win-x64/* -DestinationPath "out/DreamlandManifest-$v-win-x64.zip"
+          tar -czf "out/DreamlandManifest-$v-linux-x64.tar.gz" -C out/tools-linux-x64 .
 
       - name: Upload unsigned launcher
         id: upload-unsigned
@@ -99,4 +105,4 @@ jobs:
 
           Para publicar no VPS: copie o .exe para ``launcher/DreamlandLauncher.exe`` e rode o DreamlandManifest.
           "@
-          gh release create '${{ github.ref_name }}' '${{ steps.pick.outputs.exe }}' 'out/DreamlandManifest-${{ steps.version.outputs.version }}.zip' --title 'Dreamland Launcher ${{ steps.version.outputs.version }}' --notes $notes
+          gh release create '${{ github.ref_name }}' '${{ steps.pick.outputs.exe }}' 'out/DreamlandManifest-${{ steps.version.outputs.version }}-win-x64.zip' 'out/DreamlandManifest-${{ steps.version.outputs.version }}-linux-x64.tar.gz' --title 'Dreamland Launcher ${{ steps.version.outputs.version }}' --notes $notes

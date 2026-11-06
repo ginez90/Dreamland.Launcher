@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Dreamland.Shared;
@@ -133,8 +132,7 @@ internal static class Program
             return null;
         }
 
-        var info = FileVersionInfo.GetVersionInfo(exe);
-        var version = new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart, info.FilePrivatePart);
+        var version = ReadPeFileVersion(exe);
 
         return new LauncherInfo
         {
@@ -143,6 +141,99 @@ internal static class Program
             Size = new FileInfo(exe).Length,
             Sha256 = FileHash.Sha256Async(exe).GetAwaiter().GetResult()
         };
+    }
+
+    /// <summary>
+    /// Lê a FileVersion do recurso RT_VERSION do .exe. FileVersionInfo não serve: no Linux ele só
+    /// entende assemblies .NET, e o launcher single-file é um host nativo (daria 0.0.0.0 e
+    /// desligaria o auto update). Procurar a assinatura no arquivo inteiro também não: o host e o
+    /// bundle têm outras cópias de VS_FIXEDFILEINFO (a do runtime .NET). Por isso a leitura segue
+    /// a tabela de recursos do PE até o recurso de versão do próprio .exe.
+    /// </summary>
+    private static Version ReadPeFileVersion(string exe)
+    {
+        const int RtVersion = 16;
+        var b = File.ReadAllBytes(exe);
+
+        uint U32(long o) => BitConverter.ToUInt32(b, (int)o);
+        ushort U16(long o) => BitConverter.ToUInt16(b, (int)o);
+
+        var pe = U32(0x3C);
+        if (U32(pe) != 0x00004550)
+        {
+            throw new InvalidDataException($"{exe} não é um executável PE.");
+        }
+
+        var coff = pe + 4;
+        var sections = U16(coff + 2);
+        var optional = coff + 20;
+        var optionalSize = U16(coff + 16);
+        var dataDirs = optional + (U16(optional) == 0x20B ? 112 : 96);
+        var resourceRva = U32(dataDirs + 2 * 8);
+
+        long RvaToOffset(uint rva)
+        {
+            var table = optional + optionalSize;
+            for (var i = 0; i < sections; i++)
+            {
+                var s = table + i * 40;
+                var va = U32(s + 12);
+                var size = Math.Max(U32(s + 8), U32(s + 16));
+                if (rva >= va && rva < va + size)
+                {
+                    return rva - va + U32(s + 20);
+                }
+            }
+
+            throw new InvalidDataException($"{exe}: RVA 0x{rva:X} fora das seções.");
+        }
+
+        var root = RvaToOffset(resourceRva);
+
+        // Nível 1 = tipo (procura RT_VERSION); níveis 2 e 3 = nome e idioma (usa o primeiro).
+        long FindEntry(long dir, int? id)
+        {
+            var named = U16(dir + 12);
+            var total = named + U16(dir + 14);
+            for (var i = 0; i < total; i++)
+            {
+                var entry = dir + 16 + i * 8;
+                if (id == null || (U32(entry) & 0x80000000) == 0 && U32(entry) == id)
+                {
+                    return entry;
+                }
+            }
+
+            throw new InvalidDataException($"{exe} não tem recurso de versão.");
+        }
+
+        var node = FindEntry(root, RtVersion);
+        for (var level = 0; level < 2; level++)
+        {
+            node = FindEntry(root + (U32(node + 4) & 0x7FFFFFFF), null);
+        }
+
+        var data = root + U32(node + 4);
+        var start = RvaToOffset(U32(data));
+        var length = (int)U32(data + 4);
+
+        ReadOnlySpan<byte> signature = [0xBD, 0x04, 0xEF, 0xFE];
+        var index = b.AsSpan((int)start, length).IndexOf(signature);
+        if (index < 0)
+        {
+            throw new InvalidDataException($"{exe}: recurso de versão inválido.");
+        }
+
+        var ms = U32(start + index + 8);
+        var ls = U32(start + index + 12);
+        var version = new Version((int)(ms >> 16), (int)(ms & 0xFFFF), (int)(ls >> 16), (int)(ls & 0xFFFF));
+
+        if (version == new Version(0, 0, 0, 0))
+        {
+            throw new InvalidDataException($"{exe} tem versão 0.0.0.0: o auto update não funcionaria.");
+        }
+
+        return version;
     }
 
     /// <summary>

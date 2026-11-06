@@ -69,8 +69,8 @@ Edite `src\Dreamland.Launcher\launcher.json` **antes de compilar**. Ele é embut
 
 ```json
 {
-  "shardName": "Dreamland",
-  "manifestUrl": "https://seu-dominio/dreamland/manifest.json",
+  "shardName": "ChaosAge Dreamland",
+  "manifestUrl": "https://www.chaosage.com.br/updates/manifest.json",
   "installDir": ""
 }
 ```
@@ -98,7 +98,7 @@ atualizar sozinho, o launcher volta para a versão do VPS na próxima abertura.
 Qualquer servidor HTTP que sirva arquivos estáticos (nginx, Apache, Caddy, IIS):
 
 ```
-dreamland/                   ex.: https://seu-dominio/dreamland/
+updates/                     https://www.chaosage.com.br/updates/  (no VPS: /var/www/updates)
   manifest-config.json       copie de src/Dreamland.ManifestGen/manifest-config.example.json
   manifest.json              gerado
   files/...                  o pacote do passo 2
@@ -112,10 +112,14 @@ Edite `manifest-config.json`: IP/porta do shard, caminho do plugin, `clientVersi
 - `exclude`: nunca publicados.
 - Arquivos e pastas que começam com `.` são ignorados (servidores web costumam bloqueá-los).
 
-Se usar nginx, sirva o `manifest.json` sem cache:
+No nginx, dentro do bloco `server` do site HTTPS:
 
 ```nginx
-location = /dreamland/manifest.json { add_header Cache-Control "no-cache"; }
+location /updates/ {
+    alias /var/www/updates/;
+    location = /updates/manifest-config.json { deny all; }
+    location = /updates/manifest.json { add_header Cache-Control "no-cache"; }
+}
 ```
 
 ## 4. Compilar e distribuir
@@ -131,8 +135,8 @@ location = /dreamland/manifest.json { add_header Cache-Control "no-cache"; }
 1. Copie os arquivos novos para `files/` no VPS.
 2. Rode o gerador **depois** de os arquivos estarem lá:
 
-   ```powershell
-   DreamlandManifest.exe D:\web\dreamland
+   ```bash
+   ./DreamlandManifest /var/www/updates          # no VPS (Linux)
    ```
 
    ou, a partir deste repositório, `.\publish.ps1 -WebDir D:\web\dreamland` (também copia o launcher).
@@ -143,8 +147,9 @@ O `manifest.json` é gravado de forma atômica, então ninguém baixa um manifes
 Para atualizar o próprio launcher: aumente `<Version>` em `Dreamland.Launcher.csproj` e rode
 `publish.ps1 -WebDir ...`. Os jogadores recebem a versão nova ao abrir.
 
-O gerador precisa do .NET 10. Se o VPS for Linux sem .NET, rode-o no seu PC sobre uma cópia da
-pasta web e envie tudo para o VPS (os `files/` primeiro, o `manifest.json` por último).
+Cada release traz o gerador pronto para Linux (`DreamlandManifest-X.Y.Z-linux-x64.tar.gz`) e para
+Windows, sem precisar instalar .NET. Também dá para gerar no PC e enviar a pasta: os `files/`
+primeiro, o `manifest.json` por último.
 
 ## Observações
 
