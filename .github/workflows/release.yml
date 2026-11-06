@@ -91,9 +91,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $signedNote = if ('${{ steps.pick.outputs.signed }}' -eq 'true') { 'Assinado (code signing policy: veja o README).' } else { 'Sem assinatura digital.' }
+          $signedNote = if ('${{ steps.pick.outputs.signed }}' -eq 'true') { 'Assinado digitalmente.' } else { 'Sem assinatura digital.' }
           $notes = @"
-          $signedNote
+          $signedNote [Code signing policy](https://github.com/${{ github.repository }}#code-signing-policy) · [Privacy policy](https://github.com/${{ github.repository }}/blob/main/PRIVACY.md)
 
           SHA-256 do DreamlandLauncher.exe: ``${{ steps.pick.outputs.sha256 }}``
 
