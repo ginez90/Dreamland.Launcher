@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DreamlandLauncher</AssemblyName>
+    <RootNamespace>Dreamland.Launcher</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+
+    <!-- Versão do launcher. No CI ela vem da tag (v1.2.3); aqui é só o padrão de builds locais. -->
+    <Version>1.0.0</Version>
+
+    <!-- A SignPath só assina se estes metadados baterem com o projeto e a release. -->
+    <Product>Dreamland Launcher</Product>
+    <Company>Dreamland</Company>
+    <Description>Dreamland Launcher - install, patch and launch</Description>
+    <Copyright>Copyright (c) Dreamland Launcher contributors</Copyright>
+    <!-- Sem "+<commit>" na ProductVersion: precisa ser exatamente a versão da release. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
+    <!-- Um único .exe que roda sem o jogador instalar o .NET. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="Exists('icon.ico')">
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dreamland.Shared\Dreamland.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- Embutido: o jogador baixa só o .exe. Edite antes de compilar a versão de distribuição. -->
+  <ItemGroup>
+    <None Remove="launcher.json" />
+    <EmbeddedResource Include="launcher.json" LogicalName="launcher.json" />
+  </ItemGroup>
+
+</Project>

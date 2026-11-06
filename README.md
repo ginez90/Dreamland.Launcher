@@ -1,0 +1,186 @@
+# Dreamland Launcher — IPL (Install · Patch · Launch)
+
+Um único `DreamlandLauncher.exe` que o jogador baixa e roda. Ele:
+
+1. **Install**: na primeira vez, se instala (pasta, atalhos, entrada em "Aplicativos instalados").
+2. **Patch**: a cada abertura, baixa só os arquivos que mudaram no VPS, e atualiza a si mesmo.
+3. **Launch**: configura o ClassicUO + RazorEnhanced para o shard e abre o jogo.
+
+Não precisa de .NET nem de administrador no PC do jogador.
+
+*Install, patch and launch for the Dreamland Ultima Online shard: a single Windows executable that
+installs ClassicUO + RazorEnhanced, keeps the game files up to date from the shard's update server
+and starts the game. Licensed under the [MIT License](LICENSE).*
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- **Committers and reviewers:** [members](https://github.com/ginez90/Dreamland.Launcher/graphs/contributors)
+- **Approvers:** [owners](https://github.com/ginez90)
+
+Only `DreamlandLauncher.exe` built by the [release workflow](.github/workflows/release.yml) from this
+repository is signed, and every release is approved manually.
+
+**Privacy:** this program will not transfer any information to other networked systems unless
+specifically requested by the user or the person installing or operating it. It only contacts the
+Dreamland update server it is configured for. See the [privacy policy](PRIVACY.md).
+
+```
+src/Dreamland.Launcher     o .exe IPL (WinForms, single-file)
+src/Dreamland.ManifestGen  ferramenta que gera o manifest.json no VPS
+src/Dreamland.Shared       formato do manifest + SHA-256
+publish.ps1                compila tudo
+```
+
+## Fluxo do jogador
+
+| Situação | O que acontece |
+|---|---|
+| Roda o .exe baixado, sem o jogo instalado | Tela de instalação: escolhe a pasta (padrão `%LocalAppData%\Dreamland`) e os atalhos |
+| Roda o .exe baixado, já com o jogo instalado | Abre a instalação existente (e atualiza o .exe instalado, se o baixado for mais novo) |
+| Abre pelo atalho | Atualiza e abre o jogo (com "abrir automaticamente" marcado, sem nenhum clique) |
+| "Aplicativos instalados" → Desinstalar, ou o link "Desinstalar" | Remove o cliente, os atalhos e o registro |
+
+A pasta de instalação é a própria pasta do jogo:
+
+```
+Dreamland/
+  DreamlandLauncher.exe
+  ClassicUO/              ClassicUO + RazorEnhanced
+  UO/                     arquivos .mul/.uop
+  .launcher/              estado do launcher (cache de hashes, preferências, marcador de instalação)
+```
+
+Escolher `C:\Jogos` instala em `C:\Jogos\Dreamland`. Na desinstalação, só são apagadas as pastas que
+vieram do manifest, além de `.launcher/` e do .exe. Nada fora disso é apagado.
+
+Instalação automática (para admins ou testes):
+
+```
+DreamlandLauncher.exe --silent [--install-dir "C:\Jogos"] [--no-shortcuts]
+DreamlandLauncher.exe --uninstall [--silent]        (rodado da pasta instalada)
+```
+
+## 1. Configurar o launcher
+
+Edite `src\Dreamland.Launcher\launcher.json` **antes de compilar**. Ele é embutido no .exe:
+
+```json
+{
+  "shardName": "Dreamland",
+  "manifestUrl": "https://seu-dominio/dreamland/manifest.json",
+  "installDir": ""
+}
+```
+
+Um `launcher.json` ao lado do .exe sobrescreve o embutido (útil para testar com outro servidor).
+Para trocar o ícone, coloque um `icon.ico` em `src\Dreamland.Launcher\`.
+
+## 2. Preparar o pacote do cliente
+
+Monte uma pasta exatamente como o jogo deve ficar no PC do jogador:
+
+```
+files/
+  ClassicUO/                 ClassicUO completo
+    RazorEnhanced/           RazorEnhanced completo (RazorEnhanced.exe aqui)
+    settings.json            (opcional) padrões: fps, escala etc.
+  UO/                        arquivos do UO (.mul/.uop, incluindo mapas customizados)
+```
+
+Desligue a checagem de update do próprio RazorEnhanced: quem atualiza é o launcher. Se o RE se
+atualizar sozinho, o launcher volta para a versão do VPS na próxima abertura.
+
+## 3. Pasta web no VPS
+
+Qualquer servidor HTTP que sirva arquivos estáticos (nginx, Apache, Caddy, IIS):
+
+```
+dreamland/                   ex.: https://seu-dominio/dreamland/
+  manifest-config.json       copie de src/Dreamland.ManifestGen/manifest-config.example.json
+  manifest.json              gerado
+  files/...                  o pacote do passo 2
+  launcher/DreamlandLauncher.exe   versão mais recente (auto update)
+```
+
+Edite `manifest-config.json`: IP/porta do shard, caminho do plugin, `clientVersion` se precisar.
+
+- `ifMissing`: arquivos do jogador, baixados só na primeira instalação e nunca sobrescritos
+  (perfis, scripts e configurações do RazorEnhanced, `settings.json`).
+- `exclude`: nunca publicados.
+- Arquivos e pastas que começam com `.` são ignorados (servidores web costumam bloqueá-los).
+
+Se usar nginx, sirva o `manifest.json` sem cache:
+
+```nginx
+location = /dreamland/manifest.json { add_header Cache-Control "no-cache"; }
+```
+
+## 4. Compilar e distribuir
+
+```powershell
+.\publish.ps1
+```
+
+`publish\DreamlandLauncher.exe` é o arquivo que você põe no site para os jogadores baixarem.
+
+## 5. Publicar uma atualização
+
+1. Copie os arquivos novos para `files/` no VPS.
+2. Rode o gerador **depois** de os arquivos estarem lá:
+
+   ```powershell
+   DreamlandManifest.exe D:\web\dreamland
+   ```
+
+   ou, a partir deste repositório, `.\publish.ps1 -WebDir D:\web\dreamland` (também copia o launcher).
+
+Arquivos removidos de `files/` entram automaticamente na lista `delete` e são apagados nos jogadores.
+O `manifest.json` é gravado de forma atômica, então ninguém baixa um manifest pela metade.
+
+Para atualizar o próprio launcher: aumente `<Version>` em `Dreamland.Launcher.csproj` e rode
+`publish.ps1 -WebDir ...`. Os jogadores recebem a versão nova ao abrir.
+
+O gerador precisa do .NET 10. Se o VPS for Linux sem .NET, rode-o no seu PC sobre uma cópia da
+pasta web e envie tudo para o VPS (os `files/` primeiro, o `manifest.json` por último).
+
+## Observações
+
+- Use HTTPS no VPS se puder. Os hashes do manifest garantem integridade contra corrupção,
+  mas só HTTPS impede que alguém na rede troque o manifest.
+- O RazorEnhanced precisa do .NET Framework 4.8, que já vem no Windows 10/11.
+
+## Assinatura digital (SignPath Foundation)
+
+Sem assinatura, o Smart App Control do Windows 11 pode bloquear o launcher. Com a assinatura, ele
+roda, e o aviso do SmartScreen some conforme as releases assinadas ganham reputação.
+
+1. **Publicar o repositório** no GitHub, público, com este README (a seção *Code signing policy* tem o
+   texto exigido; já preenchida com o usuário do repositório). Ative 2FA na conta do GitHub.
+2. **Primeira release sem assinatura:** a SignPath exige que o projeto já tenha uma versão publicada.
+   Crie e envie uma tag (`git tag v1.0.0 && git push origin v1.0.0`): o workflow `Release` publica o
+   .exe sem assinatura enquanto as variáveis da SignPath não existem.
+3. **Inscrever o projeto** em [signpath.org/apply](https://signpath.org/apply). A aprovação fica a
+   critério da SignPath e pode levar algum tempo.
+4. **Configurar a SignPath** (depois de aprovado):
+   - ative 2FA na conta da SignPath;
+   - adicione o Trusted Build System "GitHub.com" e ligue-o ao projeto;
+   - em *Artifact configurations*, cole `.signpath/artifact-configuration.xml`;
+   - crie um API token de um usuário com permissão de *submitter* no projeto e na política de assinatura.
+5. **Configurar o GitHub** (Settings → Secrets and variables → Actions):
+   - secret `SIGNPATH_API_TOKEN`;
+   - variáveis `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG`.
+6. **Releases assinadas:** cada tag `vX.Y.Z` gera um pedido de assinatura. Aprove-o no site da
+   SignPath (o workflow espera até 1 hora) e a GitHub Release sai com o .exe assinado.
+
+Depois, para publicar no VPS: baixe o `DreamlandLauncher.exe` da release, coloque em
+`launcher/DreamlandLauncher.exe` na pasta web e rode o `DreamlandManifest`. Use sempre o .exe
+**assinado**, porque o hash no manifest tem que ser o dele.
+
+Regras da SignPath que este projeto precisa manter (veja [os termos](https://signpath.org/terms)):
+código 100% open source, nada de componentes proprietários, build só pelo CI, cada release aprovada
+manualmente, política de privacidade exibida na instalação e desinstalação disponível.
+O `launcher.json` embutido (com a URL do manifest) fica visível no repositório público, mas isso
+não muda nada: qualquer jogador consegue ler essa URL dentro do .exe.

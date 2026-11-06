@@ -1,0 +1,28 @@
+{
+  "server": {
+    "host": "SEU-IP-OU-DOMINIO",
+    "port": 2593
+  },
+  "client": {
+    "executable": "ClassicUO/ClassicUO.exe",
+    "uoDirectory": "UO",
+    "clientVersion": "",
+    "plugins": [
+      "ClassicUO/RazorEnhanced/RazorEnhanced.exe"
+    ],
+    "encryption": 0
+  },
+  "ifMissing": [
+    "ClassicUO/settings.json",
+    "ClassicUO/Data/**",
+    "ClassicUO/RazorEnhanced/Profiles/**",
+    "ClassicUO/RazorEnhanced/Scripts/**",
+    "ClassicUO/RazorEnhanced/Data/**"
+  ],
+  "exclude": [
+    "**/*.pdb",
+    "**/*.log",
+    "**/Thumbs.db",
+    "ClassicUO/RazorEnhanced/Backup/**"
+  ]
+}

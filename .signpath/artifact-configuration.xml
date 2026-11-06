@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Configuração de artefato para colar no projeto da SignPath (Project > Artifact configurations).
+  O workflow envia o .exe sem zip (archive: false), por isso a raiz é <pe-file>.
+  product-name/product-version são as restrições de metadados exigidas pela SignPath Foundation:
+  só assina se o .exe disser "Dreamland Launcher" e a versão da tag.
+  Valide no editor da SignPath antes de salvar.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <pe-file product-name="Dreamland Launcher" product-version="${version}">
+    <authenticode-sign />
+  </pe-file>
+</artifact-configuration>

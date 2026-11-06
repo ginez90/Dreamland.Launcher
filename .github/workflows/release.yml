@@ -1,0 +1,102 @@
+# Release: crie e envie uma tag "v1.2.3" e este workflow
+#  1. compila o launcher com essa versão,
+#  2. envia para a SignPath assinar (quando configurada; um aprovador libera no site da SignPath),
+#  3. publica uma GitHub Release com o .exe e o gerador de manifest.
+#
+# Sem as variáveis SIGNPATH_* configuradas, a release sai sem assinatura. É assim que se faz
+# a primeira release exigida pela SignPath antes da inscrição.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $v = '${{ github.ref_name }}'.TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Tag deve ser vX.Y.Z, recebido '${{ github.ref_name }}'" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Publish launcher
+        run: dotnet publish src/Dreamland.Launcher/Dreamland.Launcher.csproj -c Release -o out/launcher -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Publish manifest generator
+        shell: pwsh
+        run: |
+          dotnet publish src/Dreamland.ManifestGen/Dreamland.ManifestGen.csproj -c Release -o out/tools -p:Version=${{ steps.version.outputs.version }}
+          Compress-Archive -Path out/tools/* -DestinationPath out/DreamlandManifest-${{ steps.version.outputs.version }}.zip
+
+      - name: Upload unsigned launcher
+        id: upload-unsigned
+        uses: actions/upload-artifact@v7
+        with:
+          path: out/launcher/DreamlandLauncher.exe
+          archive: false
+
+      - name: Sign with SignPath
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: '${{ vars.SIGNPATH_ORGANIZATION_ID }}'
+          project-slug: '${{ vars.SIGNPATH_PROJECT_SLUG }}'
+          signing-policy-slug: '${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}'
+          github-artifact-id: '${{ steps.upload-unsigned.outputs.artifact-id }}'
+          wait-for-completion: true
+          # Dá tempo para um aprovador liberar a assinatura no site da SignPath.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: out/signed
+          skip-decompress: true
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
+
+      - name: Pick launcher and verify signature
+        id: pick
+        shell: pwsh
+        run: |
+          $signed = 'out/signed/DreamlandLauncher.exe'
+          if (Test-Path $signed) {
+            $sig = Get-AuthenticodeSignature $signed
+            if ($sig.Status -ne 'Valid') { throw "Assinatura inválida: $($sig.Status) $($sig.StatusMessage)" }
+            Write-Host "Assinado por: $($sig.SignerCertificate.Subject)"
+            "exe=$signed" >> $env:GITHUB_OUTPUT
+            "signed=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host 'SignPath não configurada: release sem assinatura.'
+            "exe=out/launcher/DreamlandLauncher.exe" >> $env:GITHUB_OUTPUT
+            "signed=false" >> $env:GITHUB_OUTPUT
+          }
+          $hash = (Get-FileHash ($signed, 'out/launcher/DreamlandLauncher.exe' | Where-Object { Test-Path $_ } | Select-Object -First 1) -Algorithm SHA256).Hash.ToLower()
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $signedNote = if ('${{ steps.pick.outputs.signed }}' -eq 'true') { 'Assinado (code signing policy: veja o README).' } else { 'Sem assinatura digital.' }
+          $notes = @"
+          $signedNote
+
+          SHA-256 do DreamlandLauncher.exe: ``${{ steps.pick.outputs.sha256 }}``
+
+          Para publicar no VPS: copie o .exe para ``launcher/DreamlandLauncher.exe`` e rode o DreamlandManifest.
+          "@
+          gh release create '${{ github.ref_name }}' '${{ steps.pick.outputs.exe }}' 'out/DreamlandManifest-${{ steps.version.outputs.version }}.zip' --title 'Dreamland Launcher ${{ steps.version.outputs.version }}' --notes $notes
