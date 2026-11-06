@@ -49,8 +49,9 @@ public static class SelfUpdater
         var info = manifest.Launcher!;
         var exe = ExePath;
         var newPath = exe + ".new";
+        Log.Info($"Auto-atualização: v{CurrentVersion} -> v{info.Version}.");
 
-        await Updater.DownloadVerifiedAsync(updater.ResolveUrl(info.Url), newPath, info.Size, info.Sha256, null, ct)
+        await Updater.DownloadVerifiedAsync(updater.ResolveUrl(info.Url), newPath, info.Size, info.Sha256, ct)
             .ConfigureAwait(false);
 
         File.Delete(OldPath);

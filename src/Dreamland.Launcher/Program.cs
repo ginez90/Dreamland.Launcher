@@ -49,6 +49,20 @@ internal static class Program
 
     private static void Run(string[] args)
     {
+        if (Installation.IsRunningInstalled)
+        {
+            Log.Open(Installation.RunningDir);
+        }
+
+        Log.Info(
+            $"Launcher v{SelfUpdater.CurrentVersion} iniciado: {Environment.ProcessPath} {string.Join(' ', args)} " +
+            $"({Environment.OSVersion}, {Environment.ProcessorCount} CPUs)"
+        );
+
+        Application.ThreadException += (_, e) => Log.Error("Erro não tratado na interface", e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error("Erro não tratado", e.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, e) => Log.Error("Tarefa com erro não observado", e.Exception);
+
         SelfUpdater.CleanupPrevious();
 
         LauncherConfig config;

@@ -22,6 +22,10 @@ public sealed class MainForm : Form
     private Manifest? _manifest;
     private CancellationTokenSource? _cts;
     private long _lastUiTick;
+    private UpdateStage? _stage;
+    private long _speedStart;
+    private long _speedStartBytes;
+    private string _speedText = "";
 
     public MainForm(LauncherConfig config, string installDir)
     {
@@ -43,14 +47,14 @@ public sealed class MainForm : Form
 
         _status.AutoSize = false;
         _status.Location = new Point(24, 264);
-        _status.Size = new Size(400, 22);
+        _status.Size = new Size(330, 22);
         _status.Text = "Conectando...";
 
         _bytes.AutoSize = false;
         _bytes.TextAlign = ContentAlignment.TopRight;
         _bytes.ForeColor = Theme.Muted;
-        _bytes.Location = new Point(416, 264);
-        _bytes.Size = new Size(200, 22);
+        _bytes.Location = new Point(356, 264);
+        _bytes.Size = new Size(260, 22);
 
         _progress.Location = new Point(24, 290);
         _progress.Size = new Size(592, 14);
@@ -82,10 +86,14 @@ public sealed class MainForm : Form
         var uninstall = Theme.Link("Desinstalar", new Point(24, 376));
         uninstall.LinkClicked += (_, _) => Uninstall();
 
+        var openLog = Theme.Link("Ver log", new Point(150, 376));
+        openLog.LinkClicked += (_, _) => OpenLog();
+
         Controls.AddRange(
             [
-                Theme.Title(config), Theme.Subtitle($"Launcher v{SelfUpdater.CurrentVersion.ToString(3)}"),
-                _log, _status, _bytes, _progress, _autoLaunch, _play, _verify, openFolder, uninstall
+                // Subtítulo primeiro: fica por cima do rótulo do título, que é mais alto que o texto.
+                Theme.Subtitle($"Launcher v{SelfUpdater.CurrentVersion.ToString(3)}"), Theme.Title(config),
+                _log, _status, _bytes, _progress, _autoLaunch, _play, _verify, openFolder, uninstall, openLog
             ]
         );
 
@@ -140,8 +148,11 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
+            Log.Error("Falha ao atualizar", ex);
             SetStatus("Falha ao atualizar.");
+            _bytes.Text = "";
             AppendLog($"ERRO: {ex.Message}");
+            AppendLog($"Log: {Log.CurrentFile}");
 
             // Sem servidor de update ainda dá para jogar com o que já está instalado.
             _play.Enabled = _manifest != null && File.Exists(
@@ -161,20 +172,86 @@ public sealed class MainForm : Form
             AppendLog(p.Log);
         }
 
-        // Muitos eventos por segundo durante o download: redesenha no máximo a cada 50ms.
+        var stageChanged = p.Stage != _stage;
+        if (stageChanged)
+        {
+            _stage = p.Stage;
+            _speedStart = Environment.TickCount64;
+            _speedStartBytes = p.Done;
+            _speedText = "";
+            AppendLog($"== {StageTitle(p.Stage)}");
+        }
+
+        // Muitos eventos por segundo durante o download: redesenha no máximo a cada 50ms,
+        // mas nunca pula a troca de etapa nem o 100% final.
         var now = Environment.TickCount64;
-        if (p.Log == null && now - _lastUiTick < 50 && p.DoneBytes < p.TotalBytes)
+        if (p.Log == null && !stageChanged && now - _lastUiTick < 50 && p.Done < p.Total)
         {
             return;
         }
 
         _lastUiTick = now;
-        SetStatus(p.Status);
 
-        if (p.TotalBytes > 0)
+        if (p.Stage == UpdateStage.Done)
         {
-            _progress.Value = (int)Math.Clamp(p.DoneBytes * _progress.Maximum / p.TotalBytes, 0, _progress.Maximum);
-            _bytes.Text = $"{FormatBytes(p.DoneBytes)} / {FormatBytes(p.TotalBytes)}";
+            _progress.Value = _progress.Maximum;
+            _bytes.Text = "";
+            SetStatus(p.Status);
+            return;
+        }
+
+        SetStatus($"Etapa {(int)p.Stage + 1}/4 · {p.Status}");
+
+        if (p.Total <= 0)
+        {
+            return;
+        }
+
+        _progress.Value = (int)Math.Clamp(p.Done * _progress.Maximum / p.Total, 0, _progress.Maximum);
+        _bytes.Text = p.IsBytes
+            ? $"{Log.FormatBytes(p.Done)} / {Log.FormatBytes(p.Total)}{Speed(p.Done, now)}"
+            : $"{p.Done} / {p.Total} arquivos";
+    }
+
+    private string Speed(long done, long now)
+    {
+        if (_stage != UpdateStage.Downloading)
+        {
+            return "";
+        }
+
+        // Janela de ~3s: a média desde o início ficaria inflada pelos bytes de downloads retomados.
+        var seconds = (now - _speedStart) / 1000.0;
+        if (seconds >= 3)
+        {
+            _speedText = $" · {Log.FormatBytes((long)(Math.Max(0, done - _speedStartBytes) / seconds))}/s";
+            _speedStart = now;
+            _speedStartBytes = done;
+        }
+
+        return _speedText;
+    }
+
+    private static string StageTitle(UpdateStage stage) => stage switch
+    {
+        UpdateStage.Checking    => "Etapa 1/4: conferindo a instalação",
+        UpdateStage.Downloading => "Etapa 2/4: baixando",
+        UpdateStage.Verifying   => "Etapa 3/4: conferindo os arquivos baixados",
+        UpdateStage.Installing  => "Etapa 4/4: instalando",
+        _                       => "Concluído"
+    };
+
+    private void OpenLog()
+    {
+        var file = Log.CurrentFile;
+        var target = File.Exists(file) ? file : Log.Directory;
+        try
+        {
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"{ex.Message}\n\n{target}", "Log", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 
@@ -207,14 +284,6 @@ public sealed class MainForm : Form
     private void SetStatus(string text) => _status.Text = text;
 
     private void AppendLog(string line) => _log.AppendText($"{line}{Environment.NewLine}");
-
-    private static string FormatBytes(long bytes) => bytes switch
-    {
-        >= 1L << 30 => $"{bytes / (double)(1L << 30):0.00} GB",
-        >= 1L << 20 => $"{bytes / (double)(1L << 20):0.0} MB",
-        >= 1L << 10 => $"{bytes / (double)(1L << 10):0} KB",
-        _           => $"{bytes} B"
-    };
 
     private sealed class Preferences
     {

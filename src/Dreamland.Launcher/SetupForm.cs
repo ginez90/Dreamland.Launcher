@@ -73,7 +73,7 @@ public sealed class SetupForm : Form
 
         Controls.AddRange(
             [
-                Theme.Title(config), Theme.Subtitle($"Instalação  ·  v{SelfUpdater.CurrentVersion.ToString(3)}"), intro,
+                Theme.Subtitle($"Instalação  ·  v{SelfUpdater.CurrentVersion.ToString(3)}"), Theme.Title(config), intro,
                 folderLabel, _folder, browse, _target, _desktop, _startMenu, privacy, space, _install
             ]
         );
