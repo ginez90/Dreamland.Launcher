@@ -262,6 +262,12 @@ public sealed class MainForm : Form
             return;
         }
 
+        if (!ForbiddenPrograms.EnsureNoneRunning(this, _config.ShardName))
+        {
+            SetStatus("Feche os programas proibidos para jogar.");
+            return;
+        }
+
         try
         {
             ClassicUoConfigurator.Launch(_updater.InstallDir, _manifest);
