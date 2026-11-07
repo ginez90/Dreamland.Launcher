@@ -11,7 +11,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
     <!-- Versão do launcher. No CI ela vem da tag (v1.2.3); aqui é só o padrão de builds locais. -->
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
 
     <!-- A SignPath só assina se estes metadados baterem com o projeto e a release. -->
     <Product>Dreamland Launcher</Product>
@@ -42,6 +42,7 @@
   <ItemGroup>
     <None Remove="launcher.json" />
     <EmbeddedResource Include="launcher.json" LogicalName="launcher.json" />
+    <EmbeddedResource Include="background.jpg" LogicalName="background.jpg" />
   </ItemGroup>
 
 </Project>
