@@ -115,15 +115,18 @@ public sealed class Updater
     public Uri ResolveUrl(string relativeOrAbsolute) => new(ManifestUri, relativeOrAbsolute);
 
     /// <param name="fullVerify">true = recalcula o hash de todos os arquivos, ignorando o cache.</param>
-    public async Task UpdateAsync(Manifest manifest, bool fullVerify, IProgress<UpdateProgress> progress, CancellationToken ct)
+    /// <returns>Quantos arquivos foram baixados e instalados (0 = já estava tudo atualizado).</returns>
+    public async Task<int> UpdateAsync(Manifest manifest, bool fullVerify, IProgress<UpdateProgress> progress, CancellationToken ct)
     {
         Directory.CreateDirectory(_installDir);
         var state = fullVerify ? new LocalState() : LocalState.Load(_statePath);
         Log.Info($"Atualização: pasta {_installDir}, verificação completa: {fullVerify}.");
+        var updated = 0;
 
         try
         {
             var pending = await CheckAsync(manifest, state, progress, ct).ConfigureAwait(false);
+            updated = pending.Count;
             ApplyDeletes(manifest, state, progress);
 
             if (pending.Count == 0)
@@ -143,6 +146,7 @@ public sealed class Updater
 
         progress.Report(new UpdateProgress(UpdateStage.Done, "Tudo atualizado.", 1, 1, false));
         Log.Info("Atualização concluída.");
+        return updated;
     }
 
     private async Task<List<PendingFile>> CheckAsync(

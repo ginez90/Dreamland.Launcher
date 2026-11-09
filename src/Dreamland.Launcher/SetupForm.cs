@@ -3,82 +3,133 @@ using System.Diagnostics;
 namespace Dreamland.Launcher;
 
 /// <summary>Tela "Install": aparece só quando o .exe roda fora de uma instalação (o download do site).</summary>
-public sealed class SetupForm : Form
+public sealed class SetupForm : SkinnedForm
 {
     private readonly LauncherConfig _config;
+    private readonly Label _intro = new();
+    private readonly Label _folderLabel = new();
     private readonly TextBox _folder = new();
+    private readonly Button _browse = new();
     private readonly Label _target = new();
     private readonly CheckBox _desktop;
     private readonly CheckBox _startMenu;
-    private readonly Button _install = new();
+    private readonly Label _privacy = new();
+    private readonly SkinButton _install;
 
-    public SetupForm(LauncherConfig config)
+    private string _status = "Escolha a pasta e clique em Instalar.";
+
+    public SetupForm(LauncherConfig config) : base(config)
     {
         _config = config;
-        Theme.ApplyForm(this, config, new Size(640, 400));
 
-        var intro = new Label
-        {
-            Text = $"Bem-vindo! O launcher vai instalar o {config.ShardName} (ClassicUO + RazorEnhanced), " +
-                   "manter tudo atualizado e abrir o jogo já conectado ao servidor.",
-            ForeColor = Theme.Text,
-            Location = new Point(24, 96),
-            Size = new Size(592, 44)
-        };
+        _intro.Text = "Bem-vindo! O launcher instala o jogo, mantém tudo atualizado e abre já conectado ao servidor.";
+        _intro.ForeColor = Cream;
 
-        var folderLabel = new Label { Text = "Pasta de instalação", ForeColor = Theme.Muted, AutoSize = true, Location = new Point(24, 152) };
+        _folderLabel.Text = "Pasta de instalação";
+        _folderLabel.ForeColor = Gold;
 
         _folder.Text = config.DefaultInstallDir;
         _folder.BorderStyle = BorderStyle.FixedSingle;
-        _folder.BackColor = Theme.Panel;
-        _folder.ForeColor = Theme.Text;
-        _folder.Location = new Point(24, 176);
-        _folder.Size = new Size(480, 26);
+        _folder.BackColor = Color.FromArgb(28, 26, 24);
+        _folder.ForeColor = Cream;
+
+        Theme.StyleButton(_browse, "Alterar...", false);
+        _browse.BackColor = Color.FromArgb(40, 34, 26);
+        _browse.FlatAppearance.BorderColor = Color.FromArgb(150, 110, 50);
+        _browse.Click += (_, _) => Browse();
+
+        _target.ForeColor = DimText;
+
+        _desktop = Theme.Check("Criar atalho na área de trabalho", true, Point.Empty);
+        _startMenu = Theme.Check("Criar atalho no menu Iniciar", true, Point.Empty);
+
+        _privacy.Text = "Privacidade: o launcher só acessa o servidor de atualizações e não envia dados pessoais nem telemetria.";
+        _privacy.ForeColor = DimText;
+
+        foreach (var c in new Control[] { _intro, _folderLabel, _target, _desktop, _startMenu, _privacy })
+        {
+            c.BackColor = PanelBack;
+        }
+
+        Controls.AddRange([_intro, _folderLabel, _folder, _browse, _target, _desktop, _startMenu, _privacy]);
+
+        _install = AddButton(new SkinButton(MenuSlot(0), DoInstall) { Tooltip = "Instalar o jogo nesta pasta" });
+        AddButton(new SkinButton(MenuSlot(1), () => { }) { Enabled = false, Tooltip = "Disponível depois de instalar" });
+        AddButton(new SkinButton(MenuSlot(2), Browse) { Tooltip = "Escolher a pasta de instalação" });
+        AddLink(3, config.WebsiteUrl, "Site");
+        AddLink(4, config.ForumUrl, "Fórum");
+        AddLink(5, config.DiscordUrl, "Discord");
+
+        KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter && _install.Enabled)
+            {
+                DoInstall();
+            }
+        };
+
         _folder.TextChanged += (_, _) => UpdateTarget();
-
-        var browse = new Button { Location = new Point(512, 174), Size = new Size(104, 28) };
-        Theme.StyleButton(browse, "Alterar...", false);
-        browse.Click += (_, _) => Browse();
-
-        _target.ForeColor = Theme.Muted;
-        _target.AutoSize = false;
-        _target.Location = new Point(24, 208);
-        _target.Size = new Size(592, 20);
-
-        _desktop = Theme.Check("Criar atalho na área de trabalho", true, new Point(24, 244));
-        _startMenu = Theme.Check("Criar atalho no menu Iniciar", true, new Point(24, 272));
-
-        var privacy = new Label
-        {
-            Text = $"Privacidade: o launcher só acessa o servidor de atualizações do {config.ShardName} " +
-                   "e não envia dados pessoais nem telemetria. Desinstale pelo link no launcher ou em \"Aplicativos instalados\".",
-            ForeColor = Theme.Muted,
-            Location = new Point(24, 302),
-            Size = new Size(592, 36)
-        };
-
-        var space = new Label
-        {
-            Text = "Não precisa de administrador.",
-            ForeColor = Theme.Muted,
-            AutoSize = true,
-            Location = new Point(24, 346)
-        };
-
-        Theme.StyleButton(_install, "INSTALAR", true);
-        _install.Location = new Point(456, 332);
-        _install.Size = new Size(160, 44);
-        _install.Click += (_, _) => DoInstall();
-        AcceptButton = _install;
-
-        Controls.AddRange(
-            [
-                Theme.Subtitle($"Instalação  ·  v{SelfUpdater.CurrentVersion.ToString(3)}"), Theme.Title(config), intro,
-                folderLabel, _folder, browse, _target, _desktop, _startMenu, privacy, space, _install
-            ]
-        );
-
+        Shown += (_, _) => ActiveControl = null;
         UpdateTarget();
+        InitializeSkin();
+    }
+
+    private void AddLink(int slot, string url, string name)
+    {
+        var button = AddButton(new SkinButton(MenuSlot(slot), () => OpenUrl(url)) { Tooltip = url.Length > 0 ? url : $"{name} em breve" });
+        button.Enabled = url.Length > 0;
+    }
+
+    protected override void LayoutControls()
+    {
+        var text = ArtFont(25f, FontStyle.Regular, "Segoe UI");
+        var bold = ArtFont(26f, FontStyle.Bold, "Segoe UI");
+        var small = ArtFont(21f, FontStyle.Regular, "Segoe UI");
+
+        int x = NewsBox.Left + 14, w = NewsBox.Width - 40, y = NewsBox.Top + 8;
+
+        _intro.Font = small;
+        _intro.Bounds = R(x, y - 2, w, 58);
+
+        _folderLabel.Font = bold;
+        _folderLabel.Bounds = R(x, y + 58, w, 32);
+
+        _folder.Font = text;
+        _folder.Bounds = R(x, y + 92, w - 190, 36);
+
+        _browse.Font = text;
+        _browse.Bounds = R(x + w - 176, y + 88, 176, 42);
+
+        _target.Font = small;
+        _target.Bounds = R(x, y + 132, w, 28);
+
+        _desktop.Font = small;
+        _desktop.AutoSize = false;
+        _desktop.Bounds = R(x, y + 160, w / 2, 36);
+        _startMenu.Font = small;
+        _startMenu.AutoSize = false;
+        _startMenu.Bounds = R(x + w / 2, y + 160, w / 2, 36);
+
+        _privacy.Font = small;
+        _privacy.Bounds = R(x, y + 198, w, 30);
+    }
+
+    protected override void PaintBackground(Graphics g)
+    {
+        PaintPanelTitle(g, "Instalação");
+        ClearProgressLabels(g);
+    }
+
+    protected override void PaintDynamic(Graphics g)
+    {
+        PaintProgress(g, _status, "Não precisa de administrador", null, Cream);
+        PaintVersion(g, $"Launcher v{SelfUpdater.CurrentVersion.ToString(3)}");
+    }
+
+    private void SetStatus(string text)
+    {
+        _status = text;
+        InvalidateArt(ProgressArea);
     }
 
     private void UpdateTarget()
@@ -86,12 +137,12 @@ public sealed class SetupForm : Form
         try
         {
             _target.Text = $"Será instalado em: {Installation.NormalizeTarget(_config, _folder.Text)}";
-            _install.Enabled = true;
+            SetEnabled(_install, true);
         }
         catch (Exception)
         {
             _target.Text = "Pasta inválida.";
-            _install.Enabled = false;
+            SetEnabled(_install, false);
         }
     }
 
@@ -142,7 +193,8 @@ public sealed class SetupForm : Form
 
         try
         {
-            _install.Enabled = false;
+            SetEnabled(_install, false);
+            SetStatus("Instalando...");
             UseWaitCursor = true;
 
             var exe = Installation.Install(
@@ -158,7 +210,8 @@ public sealed class SetupForm : Form
         catch (Exception ex)
         {
             UseWaitCursor = false;
-            _install.Enabled = true;
+            SetEnabled(_install, true);
+            SetStatus("Falha na instalação.");
             MessageBox.Show(this, ex.Message, "Falha na instalação", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

@@ -14,6 +14,16 @@ public sealed class LauncherConfig
 
     public string ManifestUrl { get; set; } = "";
 
+    /// <summary>Arquivo de novidades. Relativo à manifestUrl (padrão: ao lado do manifest.json) ou absoluto.</summary>
+    public string NewsUrl { get; set; } = "novidades.txt";
+
+    /// <summary>Links dos botões Website, Fórum e Discord. Vazio = botão desativado.</summary>
+    public string WebsiteUrl { get; set; } = "";
+
+    public string ForumUrl { get; set; } = "";
+
+    public string DiscordUrl { get; set; } = "";
+
     /// <summary>Pasta sugerida na instalação. Vazio = %LocalAppData%\{ShardName}.</summary>
     public string InstallDir { get; set; } = "";
 

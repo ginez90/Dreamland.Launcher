@@ -1,110 +1,112 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Dreamland.Shared;
 
 namespace Dreamland.Launcher;
 
 /// <summary>Telas "Patch" e "Launch": atualiza a instalação e abre o jogo.</summary>
-public sealed class MainForm : Form
+public sealed class MainForm : SkinnedForm
 {
     private readonly LauncherConfig _config;
     private readonly Updater _updater;
     private readonly Preferences _prefs;
+    private readonly string _installDir;
 
-    private readonly Label _status = new();
-    private readonly Label _bytes = new();
-    private readonly ProgressBar _progress = new();
-    private readonly TextBox _log = new();
-    private readonly Button _play = new();
-    private readonly Button _verify = new();
-    private readonly CheckBox _autoLaunch;
+    private readonly RichTextBox _news = News.CreateBox(Point.Empty, Size.Empty);
+    private readonly SkinButton _play;
+    private readonly SkinButton _verify;
 
     private Manifest? _manifest;
     private CancellationTokenSource? _cts;
+
+    /// <summary>true quando as novidades mudaram desde a última visita.</summary>
+    private Task<bool> _newsTask = Task.FromResult(false);
+
     private long _lastUiTick;
     private UpdateStage? _stage;
     private long _speedStart;
     private long _speedStartBytes;
     private string _speedText = "";
 
-    public MainForm(LauncherConfig config, string installDir)
+    private string _status = "Conectando...";
+    private string _detail = "";
+    private float? _fraction;
+    private bool _failed;
+
+    public MainForm(LauncherConfig config, string installDir) : base(config)
     {
         _config = config;
+        _installDir = installDir;
         _updater = new Updater(config, installDir);
         _prefs = Preferences.Load(installDir);
 
-        Theme.ApplyForm(this, config, new Size(640, 420));
+        _news.BackColor = PanelBack;
+        Controls.Add(_news);
 
-        _log.Multiline = true;
-        _log.ReadOnly = true;
-        _log.ScrollBars = ScrollBars.Vertical;
-        _log.BorderStyle = BorderStyle.None;
-        _log.BackColor = Theme.Panel;
-        _log.ForeColor = Theme.Muted;
-        _log.Font = new Font("Consolas", 9f);
-        _log.Location = new Point(24, 92);
-        _log.Size = new Size(592, 160);
+        _play = AddButton(
+            new SkinButton(MenuSlot(0), Play)
+            {
+                Label = "Jogar", Icon = "▶", PatchSource = HighlightedSlotFill, Enabled = false, Tooltip = "Abrir o jogo"
+            }
+        );
+        _verify = AddButton(
+            new SkinButton(MenuSlot(1), () => _ = RunAsync(true, false))
+            {
+                Enabled = false, Tooltip = "Conferir todos os arquivos e baixar o que faltar"
+            }
+        );
+        AddButton(new SkinButton(MenuSlot(2), () => { }) { OnClickAt = ShowSettings, Tooltip = "Configurações" });
+        AddLink(3, config.WebsiteUrl, "Site");
+        AddLink(4, config.ForumUrl, "Fórum");
+        AddLink(5, config.DiscordUrl, "Discord");
 
-        _status.AutoSize = false;
-        _status.Location = new Point(24, 264);
-        _status.Size = new Size(330, 22);
-        _status.Text = "Conectando...";
-
-        _bytes.AutoSize = false;
-        _bytes.TextAlign = ContentAlignment.TopRight;
-        _bytes.ForeColor = Theme.Muted;
-        _bytes.Location = new Point(356, 264);
-        _bytes.Size = new Size(260, 22);
-
-        _progress.Location = new Point(24, 290);
-        _progress.Size = new Size(592, 14);
-        _progress.Maximum = 1000;
-
-        _autoLaunch = Theme.Check("Abrir o jogo automaticamente ao terminar de atualizar", _prefs.AutoLaunch, new Point(24, 314));
-        _autoLaunch.CheckedChanged += (_, _) =>
+        KeyDown += (_, e) =>
         {
-            _prefs.AutoLaunch = _autoLaunch.Checked;
-            _prefs.Save(installDir);
+            if (e.KeyCode == Keys.Enter && _play.Enabled)
+            {
+                Play();
+            }
         };
 
-        Theme.StyleButton(_play, "JOGAR", true);
-        _play.Location = new Point(456, 352);
-        _play.Size = new Size(160, 44);
-        _play.Enabled = false;
-        _play.Click += (_, _) => Play();
-        AcceptButton = _play;
-
-        Theme.StyleButton(_verify, "Verificar arquivos", false);
-        _verify.Location = new Point(300, 352);
-        _verify.Size = new Size(144, 44);
-        _verify.Enabled = false;
-        _verify.Click += async (_, _) => await RunAsync(true, false);
-
-        var openFolder = Theme.Link("Abrir pasta do jogo", new Point(24, 354));
-        openFolder.LinkClicked += (_, _) => Process.Start(new ProcessStartInfo(installDir) { UseShellExecute = true });
-
-        var uninstall = Theme.Link("Desinstalar", new Point(24, 376));
-        uninstall.LinkClicked += (_, _) => Uninstall();
-
-        var openLog = Theme.Link("Ver log", new Point(150, 376));
-        openLog.LinkClicked += (_, _) => OpenLog();
-
-        Controls.AddRange(
-            [
-                // Subtítulo primeiro: fica por cima do rótulo do título, que é mais alto que o texto.
-                Theme.Subtitle($"Launcher v{SelfUpdater.CurrentVersion.ToString(3)}"), Theme.Title(config),
-                _log, _status, _bytes, _progress, _autoLaunch, _play, _verify, openFolder, uninstall, openLog
-            ]
-        );
-
-        Shown += async (_, _) => await RunAsync(false, _prefs.AutoLaunch);
+        Shown += async (_, _) =>
+        {
+            _newsTask = LoadNewsAsync();
+            await RunAsync(false, _prefs.AutoLaunch);
+        };
         FormClosing += (_, _) => _cts?.Cancel();
+
+        InitializeSkin();
     }
+
+    private void AddLink(int slot, string url, string name)
+    {
+        var button = AddButton(new SkinButton(MenuSlot(slot), () => OpenUrl(url)) { Tooltip = url.Length > 0 ? url : $"{name} em breve" });
+        button.Enabled = url.Length > 0;
+    }
+
+    protected override void LayoutControls()
+    {
+        _news.Bounds = R(NewsBox);
+        _news.Font = ArtFont(25f, FontStyle.Regular, "Segoe UI");
+    }
+
+    protected override void PaintBackground(Graphics g) => ClearProgressLabels(g);
+
+    protected override void PaintDynamic(Graphics g)
+    {
+        var color = _failed ? Theme.Warning : Cream;
+        PaintProgress(g, _status, _detail, _fraction, color);
+        PaintVersion(g, $"Launcher v{SelfUpdater.CurrentVersion.ToString(3)}");
+    }
+
+    private void InvalidateProgress() => InvalidateArt(ProgressArea);
 
     private async Task RunAsync(bool fullVerify, bool launchWhenDone)
     {
-        _play.Enabled = false;
-        _verify.Enabled = false;
+        SetEnabled(_play, false);
+        SetEnabled(_verify, false);
+        _failed = false;
         _cts = new CancellationTokenSource();
 
         // Progress<T> criado aqui captura o contexto da UI: os callbacks voltam para esta thread.
@@ -129,17 +131,34 @@ public sealed class MainForm : Form
             // Antes de baixar: a desinstalação usa esta cópia para saber quais pastas são do jogo.
             Installation.SaveAppliedManifest(_updater.InstallDir, _manifest);
 
-            await Task.Run(() => _updater.UpdateAsync(_manifest, fullVerify, progress, _cts.Token));
+            var updated = await Task.Run(() => _updater.UpdateAsync(_manifest, fullVerify, progress, _cts.Token));
 
-            _progress.Value = _progress.Maximum;
-            _bytes.Text = "";
-            SetStatus("Pronto para jogar.");
-            _play.Enabled = true;
-            _play.Focus();
-
-            if (launchWhenDone && _autoLaunch.Checked)
+            _fraction = 1f;
+            _detail = "";
+            if (updated > 0)
             {
-                Play();
+                var summary = $"Atualização instalada: {updated} {(updated == 1 ? "arquivo" : "arquivos")} (versão {_manifest.Version}).";
+                AppendLog(summary);
+                SetStatus($"{summary} Pronto para jogar.");
+            }
+            else
+            {
+                SetStatus("Pronto para jogar.");
+            }
+
+            SetEnabled(_play, true);
+
+            // Com novidades novas, não abre sozinho: o launcher fecharia antes de o jogador ler.
+            if (launchWhenDone && _prefs.AutoLaunch)
+            {
+                if (await _newsTask)
+                {
+                    SetStatus($"{_status} Leia as novidades acima.");
+                }
+                else if (!IsDisposed)
+                {
+                    Play();
+                }
             }
         }
         catch (OperationCanceledException)
@@ -149,19 +168,68 @@ public sealed class MainForm : Form
         catch (Exception ex)
         {
             Log.Error("Falha ao atualizar", ex);
-            SetStatus("Falha ao atualizar.");
-            _bytes.Text = "";
-            AppendLog($"ERRO: {ex.Message}");
-            AppendLog($"Log: {Log.CurrentFile}");
+            _failed = true;
+            _detail = "Detalhes: Configurações › Ver log";
+            SetStatus(ex is HttpRequestException or TimeoutException
+                ? "Falha ao atualizar: servidor indisponível."
+                : $"Falha ao atualizar: {ex.Message}");
 
             // Sem servidor de update ainda dá para jogar com o que já está instalado.
-            _play.Enabled = _manifest != null && File.Exists(
-                FileHash.ResolveInside(_updater.InstallDir, _manifest.Client.Executable)
+            SetEnabled(
+                _play,
+                _manifest != null && File.Exists(FileHash.ResolveInside(_updater.InstallDir, _manifest.Client.Executable))
             );
         }
         finally
         {
-            _verify.Enabled = true;
+            SetEnabled(_verify, true);
+        }
+    }
+
+    /// <summary>Independente do patch: sem novidades (ou sem rede para elas) o jogo atualiza e abre igual.</summary>
+    /// <returns>true quando o texto mudou desde a última visita.</returns>
+    private async Task<bool> LoadNewsAsync()
+    {
+        News.ShowMessage(_news, "Carregando novidades...");
+        var url = _updater.ResolveUrl(_config.NewsUrl);
+
+        try
+        {
+            // Sem ConfigureAwait(false): a continuação precisa voltar para a thread da UI.
+            var text = await News.FetchAsync(url, CancellationToken.None);
+            if (IsDisposed)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                News.ShowMessage(_news, "Nenhuma novidade no momento.");
+                return false;
+            }
+
+            var fingerprint = News.Fingerprint(text);
+            var isNew = !string.Equals(fingerprint, _prefs.LastNewsSeen, StringComparison.Ordinal);
+            News.Render(_news, text, isNew);
+
+            if (isNew)
+            {
+                _prefs.LastNewsSeen = fingerprint;
+                _prefs.Save(_installDir);
+                FlashTaskbar();
+            }
+
+            return isNew;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Novidades {url}: {ex.Message}");
+            if (!IsDisposed)
+            {
+                News.ShowMessage(_news, "Não foi possível carregar as novidades.");
+            }
+
+            return false;
         }
     }
 
@@ -179,7 +247,6 @@ public sealed class MainForm : Form
             _speedStart = Environment.TickCount64;
             _speedStartBytes = p.Done;
             _speedText = "";
-            AppendLog($"== {StageTitle(p.Stage)}");
         }
 
         // Muitos eventos por segundo durante o download: redesenha no máximo a cada 50ms,
@@ -194,23 +261,21 @@ public sealed class MainForm : Form
 
         if (p.Stage == UpdateStage.Done)
         {
-            _progress.Value = _progress.Maximum;
-            _bytes.Text = "";
+            _fraction = 1f;
+            _detail = "";
             SetStatus(p.Status);
             return;
         }
 
-        SetStatus($"Etapa {(int)p.Stage + 1}/4 · {p.Status}");
-
-        if (p.Total <= 0)
+        if (p.Total > 0)
         {
-            return;
+            _fraction = (float)Math.Clamp((double)p.Done / p.Total, 0, 1);
+            _detail = p.IsBytes
+                ? $"{Log.FormatBytes(p.Done)} / {Log.FormatBytes(p.Total)}{Speed(p.Done, now)}"
+                : $"{p.Done} / {p.Total} arquivos";
         }
 
-        _progress.Value = (int)Math.Clamp(p.Done * _progress.Maximum / p.Total, 0, _progress.Maximum);
-        _bytes.Text = p.IsBytes
-            ? $"{Log.FormatBytes(p.Done)} / {Log.FormatBytes(p.Total)}{Speed(p.Done, now)}"
-            : $"{p.Done} / {p.Total} arquivos";
+        SetStatus($"Etapa {(int)p.Stage + 1}/4 · {p.Status}");
     }
 
     private string Speed(long done, long now)
@@ -232,14 +297,30 @@ public sealed class MainForm : Form
         return _speedText;
     }
 
-    private static string StageTitle(UpdateStage stage) => stage switch
+    private void ShowSettings(Form owner, Rectangle buttonBounds)
     {
-        UpdateStage.Checking    => "Etapa 1/4: conferindo a instalação",
-        UpdateStage.Downloading => "Etapa 2/4: baixando",
-        UpdateStage.Verifying   => "Etapa 3/4: conferindo os arquivos baixados",
-        UpdateStage.Installing  => "Etapa 4/4: instalando",
-        _                       => "Concluído"
-    };
+        var menu = CreateMenu();
+
+        var auto = new ToolStripMenuItem("Abrir o jogo automaticamente ao terminar de atualizar")
+        {
+            Checked = _prefs.AutoLaunch, CheckOnClick = true
+        };
+        auto.CheckedChanged += (_, _) =>
+        {
+            _prefs.AutoLaunch = auto.Checked;
+            _prefs.Save(_installDir);
+        };
+
+        menu.Items.Add(auto);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Abrir pasta do jogo", null, (_, _) => Process.Start(new ProcessStartInfo(_installDir) { UseShellExecute = true }));
+        menu.Items.Add("Ver log", null, (_, _) => OpenLog());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Desinstalar", null, (_, _) => Uninstall());
+
+        menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
+        menu.Show(owner, new Point(buttonBounds.Right + 4, buttonBounds.Top));
+    }
 
     private void OpenLog()
     {
@@ -257,7 +338,7 @@ public sealed class MainForm : Form
 
     private void Play()
     {
-        if (_manifest == null)
+        if (_manifest == null || !_play.Enabled)
         {
             return;
         }
@@ -287,13 +368,47 @@ public sealed class MainForm : Form
         }
     }
 
-    private void SetStatus(string text) => _status.Text = text;
+    private void SetStatus(string text)
+    {
+        _status = text;
+        InvalidateProgress();
+    }
 
-    private void AppendLog(string line) => _log.AppendText($"{line}{Environment.NewLine}");
+    private static void AppendLog(string line) => Log.Info(line);
+
+    private void FlashTaskbar()
+    {
+        if (!Focused && !ContainsFocus)
+        {
+            var info = new FlashInfo
+            {
+                Size = (uint)Marshal.SizeOf<FlashInfo>(),
+                Hwnd = Handle,
+                Flags = 0x3 | 0xC, // FLASHW_ALL | FLASHW_TIMERNOFG: pisca até a janela ganhar foco.
+            };
+            FlashWindowEx(ref info);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FlashInfo
+    {
+        public uint Size;
+        public IntPtr Hwnd;
+        public uint Flags;
+        public uint Count;
+        public uint Timeout;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool FlashWindowEx(ref FlashInfo info);
 
     private sealed class Preferences
     {
         public bool AutoLaunch { get; set; } = true;
+
+        /// <summary>Impressão digital das últimas novidades exibidas (News.Fingerprint).</summary>
+        public string LastNewsSeen { get; set; } = "";
 
         private static string PathFor(string dir) => Path.Combine(dir, Installation.DataDirName, "prefs.json");
 

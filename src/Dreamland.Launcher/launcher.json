@@ -1,5 +1,8 @@
 {
   "shardName": "ChaosAge Dreamland",
   "manifestUrl": "https://www.chaosage.com.br/updates/manifest.json",
+  "websiteUrl": "https://www.chaosage.com.br/",
+  "forumUrl": "https://www.chaosage.com.br/forum/",
+  "discordUrl": "https://discord.gg/FGAscn6HvX",
   "installDir": ""
 }

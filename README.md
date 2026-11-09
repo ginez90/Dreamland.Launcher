@@ -71,12 +71,23 @@ Edite `src\Dreamland.Launcher\launcher.json` **antes de compilar**. Ele é embut
 {
   "shardName": "ChaosAge Dreamland",
   "manifestUrl": "https://www.chaosage.com.br/updates/manifest.json",
+  "websiteUrl": "https://www.chaosage.com.br/",
+  "forumUrl": "https://www.chaosage.com.br/forum/",
+  "discordUrl": "https://discord.gg/FGAscn6HvX",
   "installDir": ""
 }
 ```
 
 Um `launcher.json` ao lado do .exe sobrescreve o embutido (útil para testar com outro servidor).
-Para trocar o ícone, coloque um `icon.ico` em `src\Dreamland.Launcher\`.
+Os botões Website, Fórum e Discord abrem esses links; um link vazio desativa o botão.
+
+O ícone é `src\Dreamland.Launcher\icon.ico` e deve continuar o mesmo entre versões: os jogadores
+reconhecem o atalho por ele.
+
+O visual da janela vem de `src\Dreamland.Launcher\skin.jpg` (arte de 1536x1024 com o menu lateral, o
+painel de novidades e a barra de progresso já desenhados). `SkinnedForm` desenha a arte e posiciona
+botões, textos e progresso em coordenadas da arte. Se trocar a imagem, mantenha o mesmo layout ou
+ajuste as regiões no topo de `SkinnedForm.cs`.
 
 ## 2. Preparar o pacote do cliente
 
@@ -142,6 +153,27 @@ location /updates/ {
    ou, a partir deste repositório, `.\publish.ps1 -WebDir D:\web\dreamland` (também copia o launcher).
 
 Arquivos removidos de `files/` entram automaticamente na lista `delete` e são apagados nos jogadores.
+
+## 6. Novidades
+
+O quadro de novidades no topo do launcher lê `updates/novidades.txt`, ao lado do `manifest.json`.
+Para mudar as novidades, edite esse arquivo no VPS. Não precisa rodar o gerador nem lançar versão
+nova do launcher: o texto é baixado de novo toda vez que o launcher abre.
+
+```
+# Título (linhas que começam com # ficam em destaque)
+! Aviso importante (linhas que começam com ! aparecem em vermelho, com ⚠)
+Texto normal. Links como https://www.chaosage.com.br ficam clicáveis.
+```
+
+Quando o texto muda, o jogador vê o selo **NOVO** no topo do quadro e, só nessa vez, o jogo não
+abre sozinho (mesmo com "abrir automaticamente" marcado): ele lê e clica em JOGAR. Mudar só espaços
+ou linhas em branco não conta como novidade. Depois de baixar um patch, o status mostra quantos
+arquivos foram atualizados e a versão do cliente.
+
+Salve em UTF-8. Sem o arquivo, o quadro mostra "Nenhuma novidade no momento". Para usar outro
+endereço, defina `newsUrl` no `launcher.json` (relativo à `manifestUrl` ou absoluto).
+No nginx, vale incluir `location = /updates/novidades.txt { add_header Cache-Control "no-cache"; }`.
 O `manifest.json` é gravado de forma atômica, então ninguém baixa um manifest pela metade.
 
 Para atualizar o próprio launcher: aumente `<Version>` em `Dreamland.Launcher.csproj` e rode
