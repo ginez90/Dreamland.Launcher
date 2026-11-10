@@ -107,13 +107,13 @@ Edite `src\Dreamland.Launcher\launcher.json` **antes de compilar**. Ele é embut
 Um `launcher.json` ao lado do .exe sobrescreve o embutido (útil para testar com outro servidor).
 Os botões Website, Fórum e Discord abrem esses links; um link vazio desativa o botão.
 
-O ícone é `src\Dreamland.Launcher\icon.ico` e deve continuar o mesmo entre versões: os jogadores
-reconhecem o atalho por ele.
+O launcher não embute nenhuma imagem. A janela inteira é desenhada em código por `SkinnedForm`
+(fundo, moldura, nome do shard, painéis, barra de progresso e rodapé); os ícones dos botões são
+glifos da fonte Segoe MDL2 Assets, que já vem no Windows. As posições ficam no topo de `SkinnedForm.cs`.
 
-O visual da janela vem de `src\Dreamland.Launcher\skin.jpg` (arte de 1536x1024 com o menu lateral, o
-painel de novidades e a barra de progresso já desenhados). `SkinnedForm` desenha a arte e posiciona
-botões, textos e progresso em coordenadas da arte. Se trocar a imagem, mantenha o mesmo layout ou
-ajuste as regiões no topo de `SkinnedForm.cs`.
+O ícone `src\Dreamland.Launcher\icon.ico` também é gerado: `.\tools\make-icon.ps1` desenha as
+iniciais do `shardName` em dourado sobre fundo escuro. Não troque por arte de terceiros (logos ou
+imagens de jogos): o projeto precisa ser assinado pela SignPath e não pode ter material sem licença.
 
 ## 2. Preparar o pacote do cliente
 
@@ -208,6 +208,15 @@ Para atualizar o próprio launcher: aumente `<Version>` em `Dreamland.Launcher.c
 Cada release traz o gerador pronto para Linux (`DreamlandManifest-X.Y.Z-linux-x64.tar.gz`) e para
 Windows, sem precisar instalar .NET. Também dá para gerar no PC e enviar a pasta: os `files/`
 primeiro, o `manifest.json` por último.
+
+## 7. Idiomas
+
+O launcher fala português (padrão), inglês e espanhol. O jogador troca no botão **PT ▾** ao lado de
+minimizar, ou em Configurações › Idioma; a tela muda na hora. Na instalação a escolha vai junto para
+a cópia instalada, e depois fica em `.launcher/prefs.json` (`"language": "pt" | "en" | "es"`).
+
+Os textos ficam em `src\Dreamland.Launcher\L.cs`. O `novidades.txt` não é traduzido: aparece como foi
+escrito. O log fica sempre em português.
 
 ## Observações
 

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using Dreamland.Shared;
 
 namespace Dreamland.Launcher;
@@ -16,6 +15,10 @@ public sealed class MainForm : SkinnedForm
     private readonly RichTextBox _news = News.CreateBox(Point.Empty, Size.Empty);
     private readonly SkinButton _play;
     private readonly SkinButton _verify;
+    private readonly SkinButton _settings;
+    private readonly SkinButton _website;
+    private readonly SkinButton _forum;
+    private readonly SkinButton _discord;
 
     private Manifest? _manifest;
     private CancellationTokenSource? _cts;
@@ -23,14 +26,18 @@ public sealed class MainForm : SkinnedForm
     /// <summary>true quando as novidades mudaram desde a última visita.</summary>
     private Task<bool> _newsTask = Task.FromResult(false);
 
+    /// <summary>Redesenha o quadro de novidades no idioma atual.</summary>
+    private Action? _showNews;
+
     private long _lastUiTick;
     private UpdateStage? _stage;
     private long _speedStart;
     private long _speedStartBytes;
     private string _speedText = "";
 
-    private string _status = "Conectando...";
-    private string _detail = "";
+    // Funções, e não textos prontos: ao trocar o idioma, o status é refeito na hora.
+    private Func<string> _status = () => L.Connecting;
+    private Func<string> _detail = () => "";
     private float? _fraction;
     private bool _failed;
 
@@ -44,22 +51,12 @@ public sealed class MainForm : SkinnedForm
         _news.BackColor = PanelBack;
         Controls.Add(_news);
 
-        _play = AddButton(
-            new SkinButton(MenuSlot(0), Play)
-            {
-                Label = "Jogar", Icon = "▶", PatchSource = HighlightedSlotFill, Enabled = false, Tooltip = "Abrir o jogo"
-            }
-        );
-        _verify = AddButton(
-            new SkinButton(MenuSlot(1), () => _ = RunAsync(true, false))
-            {
-                Enabled = false, Tooltip = "Conferir todos os arquivos e baixar o que faltar"
-            }
-        );
-        AddButton(new SkinButton(MenuSlot(2), () => { }) { OnClickAt = ShowSettings, Tooltip = "Configurações" });
-        AddLink(3, config.WebsiteUrl, "Site");
-        AddLink(4, config.ForumUrl, "Fórum");
-        AddLink(5, config.DiscordUrl, "Discord");
+        _play = AddButton(new SkinButton(MenuSlot(0), Play) { Icon = Glyph.Play, Style = SkinButtonStyle.Primary, Enabled = false });
+        _verify = AddButton(new SkinButton(MenuSlot(1), () => _ = RunAsync(true, false)) { Icon = Glyph.Sync, Enabled = false });
+        _settings = AddButton(new SkinButton(MenuSlot(2), () => { }) { Icon = Glyph.Settings, OnClickAt = ShowSettings });
+        _website = AddLink(3, config.WebsiteUrl, Glyph.Globe);
+        _forum = AddLink(4, config.ForumUrl, Glyph.People);
+        _discord = AddLink(5, config.DiscordUrl, Glyph.Chat);
 
         KeyDown += (_, e) =>
         {
@@ -79,10 +76,27 @@ public sealed class MainForm : SkinnedForm
         InitializeSkin();
     }
 
-    private void AddLink(int slot, string url, string name)
+    protected override void ApplyTexts()
     {
-        var button = AddButton(new SkinButton(MenuSlot(slot), () => OpenUrl(url)) { Tooltip = url.Length > 0 ? url : $"{name} em breve" });
-        button.Enabled = url.Length > 0;
+        base.ApplyTexts();
+
+        _play.Label = L.Play;
+        _play.Tooltip = L.PlayTip;
+        _verify.Label = L.Update;
+        _verify.Tooltip = L.VerifyTip;
+        _settings.Label = L.Settings;
+        _settings.Tooltip = L.Settings;
+        SetLinkTexts(_website, _config.WebsiteUrl, L.Website);
+        SetLinkTexts(_forum, _config.ForumUrl, L.Forum);
+        SetLinkTexts(_discord, _config.DiscordUrl, "Discord");
+
+        _showNews?.Invoke();
+    }
+
+    protected override void OnLanguageChosen(Language language)
+    {
+        _prefs.Language = L.Code(language);
+        SavePrefs();
     }
 
     protected override void LayoutControls()
@@ -91,12 +105,12 @@ public sealed class MainForm : SkinnedForm
         _news.Font = ArtFont(25f, FontStyle.Regular, "Segoe UI");
     }
 
-    protected override void PaintBackground(Graphics g) => ClearProgressLabels(g);
+    protected override void PaintBackground(Graphics g) => PaintPanelTitle(g, Glyph.Megaphone, L.NewsTitle);
 
     protected override void PaintDynamic(Graphics g)
     {
         var color = _failed ? Theme.Warning : Cream;
-        PaintProgress(g, _status, _detail, _fraction, color);
+        PaintProgress(g, _status(), _detail(), _fraction, color);
         PaintVersion(g, $"Launcher v{SelfUpdater.CurrentVersion.ToString(3)}");
     }
 
@@ -114,13 +128,14 @@ public sealed class MainForm : SkinnedForm
 
         try
         {
-            SetStatus("Buscando atualizações...");
+            SetStatus(() => L.CheckingForUpdates);
             _manifest = await _updater.FetchManifestAsync(_cts.Token);
             AppendLog($"Versão do cliente no servidor: {_manifest.Version}");
 
             if (SelfUpdater.IsUpdateAvailable(_manifest))
             {
-                SetStatus($"Atualizando o launcher para v{_manifest.Launcher!.Version}...");
+                var launcherVersion = _manifest.Launcher!.Version;
+                SetStatus(() => L.UpdatingLauncher(launcherVersion));
                 if (await SelfUpdater.UpdateAsync(_updater, _manifest, _cts.Token))
                 {
                     Close();
@@ -134,16 +149,16 @@ public sealed class MainForm : SkinnedForm
             var updated = await Task.Run(() => _updater.UpdateAsync(_manifest, fullVerify, progress, _cts.Token));
 
             _fraction = 1f;
-            _detail = "";
+            _detail = () => "";
+            var version = _manifest.Version;
             if (updated > 0)
             {
-                var summary = $"Atualização instalada: {updated} {(updated == 1 ? "arquivo" : "arquivos")} (versão {_manifest.Version}).";
-                AppendLog(summary);
-                SetStatus($"{summary} Pronto para jogar.");
+                AppendLog($"Atualização instalada: {updated} arquivo(s) (versão {version}).");
+                SetStatus(() => $"{L.UpdateInstalled(updated, version)} {L.ReadyToPlay}");
             }
             else
             {
-                SetStatus("Pronto para jogar.");
+                SetStatus(() => L.ReadyToPlay);
             }
 
             SetEnabled(_play, true);
@@ -153,7 +168,8 @@ public sealed class MainForm : SkinnedForm
             {
                 if (await _newsTask)
                 {
-                    SetStatus($"{_status} Leia as novidades acima.");
+                    var ready = _status;
+                    SetStatus(() => $"{ready()} {L.ReadTheNews}");
                 }
                 else if (!IsDisposed)
                 {
@@ -169,10 +185,10 @@ public sealed class MainForm : SkinnedForm
         {
             Log.Error("Falha ao atualizar", ex);
             _failed = true;
-            _detail = "Detalhes: Configurações › Ver log";
+            _detail = () => L.DetailsInLog;
             SetStatus(ex is HttpRequestException or TimeoutException
-                ? "Falha ao atualizar: servidor indisponível."
-                : $"Falha ao atualizar: {ex.Message}");
+                ? () => L.UpdateFailedServer
+                : () => L.UpdateFailed(ex.Message));
 
             // Sem servidor de update ainda dá para jogar com o que já está instalado.
             SetEnabled(
@@ -190,7 +206,7 @@ public sealed class MainForm : SkinnedForm
     /// <returns>true quando o texto mudou desde a última visita.</returns>
     private async Task<bool> LoadNewsAsync()
     {
-        News.ShowMessage(_news, "Carregando novidades...");
+        ShowNews(() => News.ShowMessage(_news, L.LoadingNews));
         var url = _updater.ResolveUrl(_config.NewsUrl);
 
         try
@@ -204,18 +220,18 @@ public sealed class MainForm : SkinnedForm
 
             if (string.IsNullOrWhiteSpace(text))
             {
-                News.ShowMessage(_news, "Nenhuma novidade no momento.");
+                ShowNews(() => News.ShowMessage(_news, L.NoNews));
                 return false;
             }
 
             var fingerprint = News.Fingerprint(text);
             var isNew = !string.Equals(fingerprint, _prefs.LastNewsSeen, StringComparison.Ordinal);
-            News.Render(_news, text, isNew);
+            ShowNews(() => News.Render(_news, text, isNew));
 
             if (isNew)
             {
                 _prefs.LastNewsSeen = fingerprint;
-                _prefs.Save(_installDir);
+                SavePrefs();
                 FlashTaskbar();
             }
 
@@ -226,11 +242,17 @@ public sealed class MainForm : SkinnedForm
             Log.Warn($"Novidades {url}: {ex.Message}");
             if (!IsDisposed)
             {
-                News.ShowMessage(_news, "Não foi possível carregar as novidades.");
+                ShowNews(() => News.ShowMessage(_news, L.NewsFailed));
             }
 
             return false;
         }
+    }
+
+    private void ShowNews(Action show)
+    {
+        _showNews = show;
+        show();
     }
 
     private void OnProgress(UpdateProgress p)
@@ -262,20 +284,26 @@ public sealed class MainForm : SkinnedForm
         if (p.Stage == UpdateStage.Done)
         {
             _fraction = 1f;
-            _detail = "";
-            SetStatus(p.Status);
+            _detail = () => "";
+            SetStatus(() => p.Status);
             return;
         }
 
         if (p.Total > 0)
         {
             _fraction = (float)Math.Clamp((double)p.Done / p.Total, 0, 1);
-            _detail = p.IsBytes
-                ? $"{Log.FormatBytes(p.Done)} / {Log.FormatBytes(p.Total)}{Speed(p.Done, now)}"
-                : $"{p.Done} / {p.Total} arquivos";
+            if (p.IsBytes)
+            {
+                var bytes = $"{Log.FormatBytes(p.Done)} / {Log.FormatBytes(p.Total)}{Speed(p.Done, now)}";
+                _detail = () => bytes;
+            }
+            else
+            {
+                _detail = () => L.FilesProgress(p.Done, p.Total);
+            }
         }
 
-        SetStatus($"Etapa {(int)p.Stage + 1}/4 · {p.Status}");
+        SetStatus(() => $"{L.Step((int)p.Stage + 1)} · {p.Status}");
     }
 
     private string Speed(long done, long now)
@@ -301,25 +329,38 @@ public sealed class MainForm : SkinnedForm
     {
         var menu = CreateMenu();
 
-        var auto = new ToolStripMenuItem("Abrir o jogo automaticamente ao terminar de atualizar")
+        var auto = new ToolStripMenuItem(L.AutoLaunch)
         {
             Checked = _prefs.AutoLaunch, CheckOnClick = true
         };
         auto.CheckedChanged += (_, _) =>
         {
             _prefs.AutoLaunch = auto.Checked;
-            _prefs.Save(_installDir);
+            SavePrefs();
         };
 
         menu.Items.Add(auto);
+        menu.Items.Add(CreateLanguageMenuItem());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Abrir pasta do jogo", null, (_, _) => Process.Start(new ProcessStartInfo(_installDir) { UseShellExecute = true }));
-        menu.Items.Add("Ver log", null, (_, _) => OpenLog());
+        menu.Items.Add(L.OpenGameFolder, null, (_, _) => Process.Start(new ProcessStartInfo(_installDir) { UseShellExecute = true }));
+        menu.Items.Add(L.ViewLog, null, (_, _) => OpenLog());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Desinstalar", null, (_, _) => Uninstall());
+        menu.Items.Add(L.Uninstall, null, (_, _) => Uninstall());
 
         menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
         menu.Show(owner, new Point(buttonBounds.Right + 4, buttonBounds.Top));
+    }
+
+    private void SavePrefs()
+    {
+        try
+        {
+            _prefs.Save(_installDir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn($"Não foi possível salvar as preferências: {ex.Message}");
+        }
     }
 
     private void OpenLog()
@@ -345,7 +386,7 @@ public sealed class MainForm : SkinnedForm
 
         if (!ForbiddenPrograms.EnsureNoneRunning(this, _config.ShardName))
         {
-            SetStatus("Feche os programas proibidos para jogar.");
+            SetStatus(() => L.CloseForbidden);
             return;
         }
 
@@ -356,7 +397,7 @@ public sealed class MainForm : SkinnedForm
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Não foi possível abrir o jogo", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, L.CannotStartGame, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -368,7 +409,7 @@ public sealed class MainForm : SkinnedForm
         }
     }
 
-    private void SetStatus(string text)
+    private void SetStatus(Func<string> text)
     {
         _status = text;
         InvalidateProgress();
@@ -402,30 +443,4 @@ public sealed class MainForm : SkinnedForm
 
     [DllImport("user32.dll")]
     private static extern bool FlashWindowEx(ref FlashInfo info);
-
-    private sealed class Preferences
-    {
-        public bool AutoLaunch { get; set; } = true;
-
-        /// <summary>Impressão digital das últimas novidades exibidas (News.Fingerprint).</summary>
-        public string LastNewsSeen { get; set; } = "";
-
-        private static string PathFor(string dir) => Path.Combine(dir, Installation.DataDirName, "prefs.json");
-
-        public static Preferences Load(string dir)
-        {
-            try
-            {
-                return File.Exists(PathFor(dir))
-                    ? JsonSerializer.Deserialize<Preferences>(File.ReadAllText(PathFor(dir)), Manifest.JsonOptions) ?? new Preferences()
-                    : new Preferences();
-            }
-            catch (JsonException)
-            {
-                return new Preferences();
-            }
-        }
-
-        public void Save(string dir) => File.WriteAllText(PathFor(dir), JsonSerializer.Serialize(this, Manifest.JsonOptions));
-    }
 }

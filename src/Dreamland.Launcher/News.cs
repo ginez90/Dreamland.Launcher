@@ -137,10 +137,10 @@ public static class News
             box.SelectionFont = warningFont;
             box.SelectionColor = Theme.Background;
             box.SelectionBackColor = Theme.Accent;
-            box.AppendText(" NOVO ");
+            box.AppendText($" {L.NewBadge} ");
             box.SelectionBackColor = box.BackColor;
             box.SelectionColor = Theme.Accent;
-            box.AppendText("  Novidades desde a sua última visita\n\n");
+            box.AppendText($"  {L.NewSinceLastVisit}\n\n");
         }
 
         var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');

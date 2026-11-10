@@ -135,7 +135,7 @@ public static class Installation
         var dir = RunningDir;
         if (!IsInstalledAt(dir))
         {
-            throw new InvalidOperationException("Este launcher não está instalado.");
+            throw new InvalidOperationException(L.NotInstalled);
         }
 
         var marker = ReadMarker(dir);

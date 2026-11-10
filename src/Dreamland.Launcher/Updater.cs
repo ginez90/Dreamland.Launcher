@@ -144,7 +144,7 @@ public sealed class Updater
             state.Save(_statePath);
         }
 
-        progress.Report(new UpdateProgress(UpdateStage.Done, "Tudo atualizado.", 1, 1, false));
+        progress.Report(new UpdateProgress(UpdateStage.Done, L.AllUpToDate, 1, 1, false));
         Log.Info("Atualização concluída.");
         return updated;
     }
@@ -157,7 +157,7 @@ public sealed class Updater
         var files = manifest.Files.Where(f => Installation.IsManageable(f.Path.Split('/')[0])).ToList();
         var pending = new List<PendingFile>();
 
-        progress.Report(new UpdateProgress(UpdateStage.Checking, "Conferindo a instalação...", 0, files.Count, false));
+        progress.Report(new UpdateProgress(UpdateStage.Checking, L.CheckingInstallation, 0, files.Count, false));
 
         for (var i = 0; i < files.Count; i++)
         {
@@ -173,7 +173,7 @@ public sealed class Updater
 
             if ((i + 1) % 25 == 0 || i + 1 == files.Count)
             {
-                progress.Report(new UpdateProgress(UpdateStage.Checking, "Conferindo a instalação...", i + 1, files.Count, false));
+                progress.Report(new UpdateProgress(UpdateStage.Checking, L.CheckingInstallation, i + 1, files.Count, false));
             }
         }
 
@@ -199,7 +199,7 @@ public sealed class Updater
                 File.Delete(target);
                 state.Files.Remove(Normalize(relative));
                 Log.Info($"Removido: {relative}");
-                progress.Report(new UpdateProgress(UpdateStage.Checking, "Removendo arquivos antigos...", 1, 1, false, $"Removido: {relative}"));
+                progress.Report(new UpdateProgress(UpdateStage.Checking, L.RemovingOldFiles, 1, 1, false, $"Removido: {relative}"));
             }
         }
     }
@@ -238,10 +238,7 @@ public sealed class Updater
                 Log.Error($"Não instalado: {item.File.Path} ({reason})");
             }
 
-            throw new IOException(
-                $"{failed.Count} arquivo(s) não puderam ser baixados. Feche e abra o launcher para continuar de onde parou; " +
-                $"se continuar, envie o log para a staff:{Environment.NewLine}{Log.CurrentFile}"
-            );
+            throw new IOException(L.DownloadsFailed(failed.Count, Log.CurrentFile));
         }
     }
 
@@ -250,7 +247,7 @@ public sealed class Updater
     )
     {
         var totalBytes = items.Sum(p => p.File.Size);
-        var status = $"Baixando {items.Count} arquivos...";
+        var status = L.Downloading(items.Count);
         long doneBytes = 0;
 
         var downloaded = new List<PendingFile>();
@@ -379,7 +376,7 @@ public sealed class Updater
         var good = new List<PendingFile>();
         var bad = new List<PendingFile>();
         var watch = Stopwatch.StartNew();
-        const string status = "Conferindo os downloads...";
+        var status = L.CheckingDownloads;
 
         progress.Report(new UpdateProgress(UpdateStage.Verifying, status, 0, totalBytes, true));
 
@@ -416,7 +413,7 @@ public sealed class Updater
 
     private static void Install(List<PendingFile> items, LocalState state, IProgress<UpdateProgress> progress)
     {
-        const string status = "Instalando os arquivos...";
+        var status = L.InstallingFiles;
         progress.Report(new UpdateProgress(UpdateStage.Installing, status, 0, items.Count, false));
 
         for (var i = 0; i < items.Count; i++)

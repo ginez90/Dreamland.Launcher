@@ -18,7 +18,7 @@ public static class ClassicUoConfigurator
 
         if (!File.Exists(exe))
         {
-            throw new FileNotFoundException("ClassicUO não encontrado na instalação.", exe);
+            throw new FileNotFoundException(L.ClassicUoMissing, exe);
         }
 
         var settingsPath = Path.Combine(Path.GetDirectoryName(exe)!, "settings.json");

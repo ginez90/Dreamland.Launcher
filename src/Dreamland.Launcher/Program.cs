@@ -15,11 +15,17 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
 
+        // O download do site ainda não tem preferências: abre em português, o padrão.
+        if (Installation.IsRunningInstalled)
+        {
+            L.Current = L.FromCode(Preferences.Load(Installation.RunningDir).Language);
+        }
+
         // Uma instância por vez: duas atualizando a mesma pasta corromperiam os arquivos.
         using var mutex = new Mutex(false, @"Local\DreamlandLauncher");
         if (!Acquire(mutex))
         {
-            MessageBox.Show("O launcher já está aberto.", "Dreamland", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(L.AlreadyOpen, "Dreamland", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
@@ -72,7 +78,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Configuração inválida", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(ex.Message, L.InvalidConfiguration, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
@@ -158,10 +164,8 @@ internal static class Program
     {
         var answer = MessageBox.Show(
             owner,
-            $"Desinstalar o {config.ShardName}?\n\n" +
-            $"Serão apagados o cliente, os atalhos e as configurações, incluindo perfis e scripts do RazorEnhanced " +
-            $"que estão em:\n{Installation.RunningDir}",
-            "Desinstalar",
+            L.UninstallConfirm(config.ShardName, Installation.RunningDir),
+            L.Uninstall,
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2
@@ -175,12 +179,12 @@ internal static class Program
         try
         {
             Installation.Uninstall(config);
-            MessageBox.Show(owner, $"{config.ShardName} foi desinstalado.", "Desinstalar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(owner, L.Uninstalled(config.ShardName), L.Uninstall, MessageBoxButtons.OK, MessageBoxIcon.Information);
             return true;
         }
         catch (Exception ex)
         {
-            MessageBox.Show(owner, ex.Message, "Falha ao desinstalar", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(owner, ex.Message, L.UninstallFailed, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return false;
         }
     }

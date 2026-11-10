@@ -122,11 +122,8 @@ public static class ForbiddenPrograms
 
             var answer = MessageBox.Show(
                 owner,
-                $"Foram encontrados programas proibidos rodando no seu computador:\n\n{lines}\n\n" +
-                $"EasyUO e Injection não são permitidos no {shardName}. " +
-                "Os únicos assistentes permitidos são o Razor CE e o Razor Enhanced.\n\n" +
-                "Feche esses programas e clique em \"Repetir\" para abrir o jogo.",
-                "Programa proibido detectado",
+                L.ForbiddenFound(lines, shardName),
+                L.ForbiddenTitle,
                 MessageBoxButtons.RetryCancel,
                 MessageBoxIcon.Stop
             );
