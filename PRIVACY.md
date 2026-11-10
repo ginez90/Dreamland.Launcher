@@ -11,6 +11,10 @@ Dreamland Launcher does not collect, store or send personal data.
   hardware identifiers, telemetry or usage data.
 - **Game:** when you press PLAY, the launcher starts ClassicUO, which connects to the game server listed
   in the manifest. Your login is sent by ClassicUO to that game server, not by the launcher.
+- **Forbidden assistant check:** before starting the game, the launcher reads the names and version
+  information of the running processes to detect EasyUO and Injection, which the shard does not allow.
+  This happens only on your computer. The result is shown to you and written to the launcher's local log
+  file, and is never sent anywhere.
 - **Local changes:** the launcher writes only inside its install folder, creates the desktop and Start
   menu shortcuts you selected, and registers itself under "Installed apps" for the current user
   (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`). The uninstaller removes all of these.
@@ -30,5 +34,9 @@ O Dreamland Launcher não coleta, armazena nem envia dados pessoais.
   de hardware, telemetria ou dados de uso.
 - **Jogo:** ao clicar em JOGAR, o launcher abre o ClassicUO, que se conecta ao servidor do jogo indicado
   no manifest. O seu login é enviado pelo ClassicUO a esse servidor, não pelo launcher.
+- **Verificação de assistentes proibidos:** antes de abrir o jogo, o launcher lê o nome e as informações
+  de versão dos processos abertos para detectar EasyUO e Injection, que o shard não permite. Isso acontece
+  só no seu computador. O resultado é mostrado a você e gravado no log local do launcher, e nunca é
+  enviado a lugar nenhum.
 - **Alterações locais:** o launcher só escreve dentro da pasta de instalação, cria os atalhos que você
   escolheu e se registra em "Aplicativos instalados" do usuário atual. A desinstalação remove tudo isso.

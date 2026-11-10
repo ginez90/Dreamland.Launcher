@@ -12,6 +12,32 @@ Não precisa de .NET nem de administrador no PC do jogador.
 installs ClassicUO + RazorEnhanced, keeps the game files up to date from the shard's update server
 and starts the game. Licensed under the [MIT License](LICENSE).*
 
+## About (English)
+
+Dreamland Launcher is a small open source Windows application (C#, .NET 10, WinForms) for players of
+the Dreamland Ultima Online shard. It is a single self-contained executable that:
+
+- **Installs** the game for the current user, without administrator rights: it asks for a folder
+  (default `%LocalAppData%\Dreamland`), creates the shortcuts the user selected and registers itself
+  under "Installed apps" so it can be removed like any other program.
+- **Patches**: on every start it downloads `manifest.json` from the shard's update server, compares
+  SHA-256 hashes and downloads only the files that changed. It also updates itself when a newer launcher
+  version is published.
+- **Launches**: it writes the ClassicUO settings for the shard and starts the open source
+  [ClassicUO](https://github.com/ClassicUO/ClassicUO) client with the
+  [RazorEnhanced](https://github.com/RazorEnhanced/RazorEnhanced) assistant.
+- **Checks for forbidden assistants**: before starting the game it looks at the names and version
+  information of the user's running processes and refuses to start while EasyUO or Injection is open
+  (the shard rules allow only Razor). The check is local only; nothing is reported anywhere.
+- **Uninstalls** cleanly: `DreamlandLauncher.exe --uninstall`, or "Installed apps" → Uninstall, removes
+  the files it installed, its shortcuts and its registry entry.
+
+The signed executable contains only the code in this repository and the .NET runtime. The game client,
+the assistant and the game data are not part of it: they are downloaded from the shard's update server.
+
+The repository also contains `Dreamland.ManifestGen`, a command line tool the shard administrators run on
+the update server to generate `manifest.json`. It is published in the releases but is not signed.
+
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
